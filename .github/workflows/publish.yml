@@ -1,0 +1,37 @@
+on: [push]
+
+env:
+  VERSION: "1.0.${{ github.run_number }}"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v1
+
+      - name: Create a package called @${{ github.repository }}
+        run: npm init --scope ${{ github.repository_owner }} -y
+
+      - name: Add index.js to package
+        run: echo 'exports.sayHello = () => { console.log("Hello from ${{ github.repository }}!") }' > index.js
+
+      - name: Set package version to ${{ env.VERSION }}
+        run: npm version ${{ env.VERSION }} --no-git-tag-version
+
+      - name: Build the package
+        run: npm pack
+
+      - name: Publish the package
+        run: |
+          echo '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+          @${{ github.repository_owner }}:registry=https://npm.pkg.github.com' > .npmrc
+          npm publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - run: gh api repos/${{ github.repository_owner }}/npm-install/dispatches <<< '{"event_type":"build"}' --input -
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
