@@ -1,0 +1,52 @@
+on: [push, workflow_dispatch]
+
+env:
+  VERSION: "1.0.${{ github.run_number }}"
+  PACKAGE_NAME: npm-publish
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v1
+        with:
+          scope: ${{ github.repository_owner }}
+          registry-url: https://npm.pkg.github.com
+
+      - name: Create a package called @${{ github.repository }}
+        run: npm init --scope ${{ github.repository_owner }} -y
+
+      - name: Add index.js to package
+        run: echo 'exports.sayHello = () => { console.log("Hello from ${{ github.repository }}!") }' > index.js
+
+      - name: Set package version to ${{ env.VERSION }}
+        run: npm version ${{ env.VERSION }} --no-git-tag-version
+
+      - name: Build the package
+        run: npm pack
+
+      - name: Publish the package
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+
+      - name: Trigger npm-install workflow
+        if: ${{ env.GITHUB_TOKEN != null }}
+        run: gh api repos/${{ github.repository_owner }}/npm-install/dispatches <<< '{"event_type":"build"}' --input -
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
+          
+  retention-policy:
+    runs-on: ubuntu-latest
+
+    needs: [publish]
+
+    steps:
+      - name: Retain 10 most recent versions
+        uses: actions/delete-package-versions@32b30cfe627e87fa3a77027be5c3663bc3abbb77
+        with:
+          package-name: ${{ env.PACKAGE_NAME }}
+          min-versions-to-keep: 10
